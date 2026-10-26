@@ -2501,3 +2501,22 @@ fn live_dab_push_refuses_a_stroke_that_grows_too_large() {
         live.push(&[StrokePoint::new(30.0, 20.0, 1.0)]).unwrap_or_else(|e| panic!("{cmd}: the stroke must carry on: {e}"));
     }
 }
+
+/// #8666: the live Clone Stamp, Healing Brush, History Brush and Pattern Stamp strokes are refused
+/// when a pushed point grows them past the budget, with the preview and bounds untouched.
+#[test]
+fn live_retouch_push_refuses_a_stroke_that_grows_too_large() {
+    for cmd in ["paint.cloneStamp", "paint.healingBrush", "paint.historyBrush", "paint.patternStamp"] {
+        let mut s = session(64, 48, 8, "rgb");
+        paint_layer(&mut s, texture);
+        let p = json!({"points": [[10, 10]], "source": [4, 8], "size": 8, "hardness": 50, "pattern": "Checkerboard", "aligned": true});
+        let mut live = LiveRetouch::begin(&s, cmd, &p).unwrap();
+        let (shown, bounds) = (live.doc.clone(), live.bounds());
+        let err = live.push(&[StrokePoint::new(900_000.0, 900_000.0, 1.0)]).unwrap_err().to_string();
+        assert!(err.contains("stroke too large"), "{cmd}: {err}");
+        assert!(std::sync::Arc::ptr_eq(&live.doc, &shown), "{cmd}: a refused push leaves the preview alone");
+        assert_eq!(live.bounds(), bounds, "{cmd}");
+        assert_eq!(live.points().len(), 1, "{cmd}: and the recorded points");
+        live.push(&[StrokePoint::new(30.0, 20.0, 1.0)]).unwrap_or_else(|e| panic!("{cmd}: the stroke must carry on: {e}"));
+    }
+}
