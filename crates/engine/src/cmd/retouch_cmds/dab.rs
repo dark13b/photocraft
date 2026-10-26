@@ -2,7 +2,7 @@ use super::sampling::{AllLayers, sample_all_layers};
 use super::{
     BrushSettings, Document, EngineError, Footprint, IndexedParallelIterator, LayerId, ParallelIterator, ParallelSliceMut, PixelFormat, Rect, Region, Result,
     Session, Smudge, Stroke, StrokePoint, Surface, ToneRange, Value, alpha_index, apply_dab_stroke, bad, damage_json, dodge_burn, flag, from_rgba_into,
-    has_pixel_layer, json, local_blur, local_sharpen, num, parse_brush, run_stroke, sponge, string, to_rgba,
+    has_pixel_layer, json, local_blur, local_sharpen, num, parse_brush, reject_huge_stroke, run_stroke, sponge, string, to_rgba,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -269,6 +269,7 @@ impl DabTool {
 /// (`apply_dab_stroke`). Blur, Sharpen and Smudge can sample all layers.
 pub(super) fn dab_cmd(s: &mut Session, p: &Value, cmd: &str) -> Result<Value> {
     let (stroke, id) = parse_brush(s, p, cmd)?;
+    reject_huge_stroke(cmd, &stroke)?;
     let (tool, label) = DabTool::parse(s, cmd, p, &stroke)?;
     let all = matches!(tool, DabTool::Focus { .. } | DabTool::Smudge { .. }) && sample_all_layers(p);
     // The live stroke the canvas already drew for exactly this commit (`LiveDab::into_commit`):
@@ -480,6 +481,8 @@ impl LiveDab {
         neighborhood: DabNeighborhood,
         effect: impl FnOnce(&Surface) -> DabEffect,
     ) -> Result<Self> {
+        // The working copy is dense over the stroke's bounds (#8666).
+        reject_huge_stroke(cmd, &stroke)?;
         let sel = doc.selection.clone();
         let (surf, lock) = crate::channel_cmds::target_surface(&mut doc, id, p)?;
         let pre_surf = surf.clone();

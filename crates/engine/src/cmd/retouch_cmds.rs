@@ -46,7 +46,7 @@ const MAX_STROKE_PIXELS: u64 = 67_108_864;
 
 /// Refuse a stroke whose footprint would not fit the coverage budget, from the points and brush
 /// size alone, before the renderer allocates anything for it.
-fn reject_huge_stroke(cmd: &str, stroke: &Stroke) -> Result<()> {
+pub(crate) fn reject_huge_stroke(cmd: &str, stroke: &Stroke) -> Result<()> {
     // Dynamics place dabs beyond the input points, so half the tip is not the whole reach:
     // Scattering offsets a centre by up to its amount times the tip size, and a Dual Brush dab
     // reaches its own radius further. Pad by what those can add so this estimate does not fall

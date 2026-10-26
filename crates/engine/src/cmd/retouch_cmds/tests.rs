@@ -607,6 +607,51 @@ fn every_retouch_stroke_refuses_a_box_it_cannot_render() {
     assert!(err.contains("stroke too large"), "paint.remove: {err}");
 }
 
+/// #8666: the sequential-dab strokes (Dodge, Burn, Sponge, Blur, Sharpen, Smudge), the Mixer Brush,
+/// Color Replacement and the Background Eraser all copy the target densely over the stroke's
+/// bounds, and a drag far off the canvas made that copy large enough to abort the process. Each
+/// refuses the oversized stroke without touching the pixels or the history, and an ordinary
+/// stroke still runs, at every depth.
+#[test]
+fn every_dab_stroke_refuses_a_box_it_cannot_copy() {
+    let huge = json!([[0, 0], [900_000, 900_000]]);
+    let ok = json!([[2, 2], [30, 16]]);
+    let cases: [(&str, Value); 10] = [
+        ("paint.dodge", json!({"size": 8})),
+        ("paint.burn", json!({"size": 8})),
+        ("paint.sponge", json!({"size": 8})),
+        ("paint.blur", json!({"size": 8})),
+        ("paint.sharpen", json!({"size": 8})),
+        ("paint.smudge", json!({"size": 8})),
+        ("paint.mixerBrush", json!({"size": 8})),
+        ("paint.mixerBrush", json!({"size": 8, "sampleAllLayers": true})),
+        ("paint.colorReplacement", json!({"size": 8})),
+        ("paint.backgroundEraser", json!({"size": 8})),
+    ];
+    for depth in DEPTHS {
+        for (cmd, base) in &cases {
+            let mut s = session(40, 20, depth, "rgb");
+            s.execute("paint.stroke", json!({"points": [[0, 10], [40, 10]], "size": 12, "hardness": 1.0, "color": "#ff0000"})).unwrap();
+            let before = rgba(&s, 20, 10);
+            let steps = s.active().unwrap().history.past_len();
+            let with = |points: &Value| {
+                let mut v = base.clone();
+                if let Some(o) = v.as_object_mut() {
+                    o.insert("points".into(), points.clone());
+                }
+                v
+            };
+            let err = s.execute(cmd, with(&huge)).unwrap_err().to_string();
+            assert!(err.contains("stroke too large"), "{cmd} at {depth}: {err}");
+            assert_eq!(rgba(&s, 20, 10), before, "{cmd} at {depth}: a refused stroke leaves the pixels alone");
+            assert_eq!(s.active().unwrap().history.past_len(), steps, "{cmd} at {depth}: and records no history step");
+
+            s.execute(cmd, with(&ok)).unwrap_or_else(|e| panic!("{cmd} at {depth}: an ordinary stroke must work: {e}"));
+            assert_eq!(s.active().unwrap().history.past_len(), steps + 1, "{cmd} at {depth}: and records one step");
+        }
+    }
+}
+
 /// The review on #6110: the estimate from the input points is not the bound. Brush dynamics place
 /// dabs beyond those points, so the budget is applied to the extent the renderer actually produced,
 /// before the dense buffer is allocated. An injected budget makes that observable without asking

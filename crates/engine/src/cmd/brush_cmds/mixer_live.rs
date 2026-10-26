@@ -166,6 +166,8 @@ impl LiveMixer {
         }
         let points = parse_points(p, CMD)?;
         let brush = resolve_brush(s, p, CMD)?;
+        // Dabs are tiled, but a stroke far beyond the canvas still means an unbounded dab count (#8666).
+        crate::retouch_cmds::reject_huge_stroke(CMD, &Stroke { brush: brush.clone(), points: points.clone() })?;
         let bm = &brush.mixer;
         let settings = MixerSettings {
             wet: pct(p, "wet", bm.wet * 100.0),
