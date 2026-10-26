@@ -646,7 +646,9 @@ fn every_dab_stroke_refuses_a_box_it_cannot_copy() {
             assert_eq!(rgba(&s, 20, 10), before, "{cmd} at {depth}: a refused stroke leaves the pixels alone");
             assert_eq!(s.active().unwrap().history.past_len(), steps, "{cmd} at {depth}: and records no history step");
 
+            let pixels = layer_pixels(&s);
             s.execute(cmd, with(&ok)).unwrap_or_else(|e| panic!("{cmd} at {depth}: an ordinary stroke must work: {e}"));
+            assert_ne!(layer_pixels(&s), pixels, "{cmd} at {depth}: and changes pixels");
             assert_eq!(s.active().unwrap().history.past_len(), steps + 1, "{cmd} at {depth}: and records one step");
         }
     }
@@ -2477,5 +2479,25 @@ fn periodic_clone_interior_matches_ordinary_brush_masks_and_transparency() {
             let error = a.iter().zip(&b).map(|(a, b)| (a - b).abs()).fold(0.0_f32, f32::max);
             assert!(error <= tolerance, "depth={depth}, brush={brush}, max native-channel error={error}");
         }
+    }
+}
+
+/// #8666: a live stroke can start small and then grow past the budget with a pushed point. The push
+/// is refused with nothing changed (preview, bounds), and the stroke carries on afterwards.
+#[test]
+fn live_dab_push_refuses_a_stroke_that_grows_too_large() {
+    for (cmd, extra) in dab_cases() {
+        let mut s = session(64, 48, 8, "rgb");
+        paint_layer(&mut s, texture);
+        let mut live = LiveDab::begin(&s, cmd, &dab_opts(&[[10.0, 10.0]], 50, &extra)).unwrap();
+        let (shown, bounds) = (live.doc.clone(), live.bounds());
+        let before = shown.layer(s.active().unwrap().active_layer.unwrap()).unwrap().surface().unwrap().clone();
+        let err = live.push(&[StrokePoint::new(900_000.0, 900_000.0, 1.0)]).unwrap_err().to_string();
+        assert!(err.contains("stroke too large"), "{cmd}: {err}");
+        assert!(std::sync::Arc::ptr_eq(&live.doc, &shown), "{cmd}: a refused push leaves the preview alone");
+        assert_eq!(live.bounds(), bounds, "{cmd}: and the bounds");
+        let id = s.active().unwrap().active_layer.unwrap();
+        assert_eq!(live.doc.layer(id).unwrap().surface().unwrap().read_region(shown.bounds()), before.read_region(shown.bounds()), "{cmd}: and the pixels");
+        live.push(&[StrokePoint::new(30.0, 20.0, 1.0)]).unwrap_or_else(|e| panic!("{cmd}: the stroke must carry on: {e}"));
     }
 }

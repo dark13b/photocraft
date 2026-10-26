@@ -135,6 +135,7 @@ pub struct LiveMixer {
     cmyk: Option<Arc<photocraft_color::convert::CmykSpace>>,
     original: Arc<Document>,
     points: Vec<StrokePoint>,
+    point_bounds: crate::retouch_cmds::PointBounds,
     original_state: MixerState,
 }
 
@@ -238,6 +239,7 @@ impl LiveMixer {
             cmyk: doc_cmyk_space(s),
             original: s.active().ok_or(EngineError::NoDocument)?.doc.clone(),
             points: Vec::new(),
+            point_bounds: crate::retouch_cmds::PointBounds::EMPTY,
             original_state: s.tools.mixer.clone(),
         };
         Ok((live, points))
@@ -258,6 +260,13 @@ impl LiveMixer {
         check_coords(points, CMD)?;
         if self.core.preview_limits && self.points.len().saturating_add(points.len()) > 65_536 {
             return Err(bad(CMD, "stroke exceeds 65536 recorded input samples"));
+        }
+        // A live stroke grows after it starts: admit the grown box before anything is mutated (#8666).
+        if !points.is_empty() {
+            let mut grown = self.point_bounds;
+            grown.add(points);
+            grown.reject_huge(CMD, &self.core.ctx.brush)?;
+            self.point_bounds = grown;
         }
         let cmyk = self.cmyk.clone();
         photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
