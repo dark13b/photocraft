@@ -681,6 +681,27 @@ fn the_budget_is_applied_to_the_rendered_extent_not_the_input_points() {
     assert!(super::coverage_within("t", &stroke, rendered).is_ok(), "the rendered extent itself fits");
 }
 
+/// The review on #9644: a stroke whose input points fit can still render, with scattering and the
+/// neighbourhood halo, into more pixels than the dense working copy may hold. The rendered extent
+/// plus halo is what `reject_huge_extent` measures, before `apply_dab_stroke` reads anything.
+#[test]
+fn the_dab_copy_budget_counts_the_rendered_extent_and_the_halo() {
+    use photocraft_paint::{BrushSettings, Stroke, StrokePoint};
+    let mut brush = BrushSettings { size: 24.0, hardness: 1.0, ..Default::default() };
+    brush.scattering.enabled = true;
+    brush.scattering.scatter.jitter = 6.0;
+    let stroke = Stroke { brush, points: vec![StrokePoint::new(10.0, 10.0, 1.0), StrokePoint::new(40.0, 10.0, 1.0)] };
+
+    let bare = photocraft_paint::retouch::dab_stroke_area(&stroke, 0);
+    let haloed = photocraft_paint::retouch::dab_stroke_area(&stroke, 8);
+    assert!(haloed > bare, "the halo is part of what gets copied: {haloed} vs {bare}");
+
+    assert!(super::reject_huge_extent("t", &stroke, 8, haloed).is_ok(), "exactly the copied area fits");
+    let err = super::reject_huge_extent("t", &stroke, 8, haloed - 1).unwrap_err().to_string();
+    assert!(err.contains("stroke too large"), "{err}");
+    assert!(super::reject_huge_extent("t", &stroke, 0, haloed - 1).is_ok(), "without the halo the same budget still fits");
+}
+
 #[test]
 fn history_brush_reads_a_source_when_its_pixels_were_locked() {
     // Given a white layer locked in history state 1, then unlocked and filled red.

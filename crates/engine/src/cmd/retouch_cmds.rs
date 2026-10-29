@@ -100,6 +100,15 @@ pub(crate) fn reject_huge_stroke(cmd: &str, stroke: &Stroke) -> Result<()> {
     bounds.reject_huge(cmd, &stroke.brush)
 }
 
+/// Refuse a dab stroke whose rendered extent plus `halo` exceeds `max` pixels, before the dense
+/// working copy is read. [`reject_huge_stroke`] only sees the input points.
+pub(crate) fn reject_huge_extent(cmd: &str, stroke: &Stroke, halo: i32, max: u64) -> Result<()> {
+    if photocraft_paint::retouch::dab_stroke_area(stroke, halo) > max {
+        return Err(bad(cmd, format!("stroke too large (at most {max} px)")));
+    }
+    Ok(())
+}
+
 /// The stroke's coverage, with the **rendered** extent admitted before the dense buffer exists.
 ///
 /// `reject_huge_stroke` estimates from the input points; this is the real bound. Rendering is

@@ -1,8 +1,8 @@
 use super::sampling::{AllLayers, sample_all_layers};
 use super::{
-    PointBounds, BrushSettings, Document, EngineError, Footprint, IndexedParallelIterator, LayerId, ParallelIterator, ParallelSliceMut, PixelFormat, Rect, Region, Result,
-    Session, Smudge, Stroke, StrokePoint, Surface, ToneRange, Value, alpha_index, apply_dab_stroke, bad, damage_json, dodge_burn, flag, from_rgba_into,
-    has_pixel_layer, json, local_blur, local_sharpen, num, parse_brush, reject_huge_stroke, run_stroke, sponge, string, to_rgba,
+    BrushSettings, Document, EngineError, Footprint, IndexedParallelIterator, LayerId, ParallelIterator, ParallelSliceMut, PixelFormat, PointBounds, Rect,
+    Region, Result, Session, Smudge, Stroke, StrokePoint, Surface, ToneRange, Value, alpha_index, apply_dab_stroke, bad, damage_json, dodge_burn, flag,
+    from_rgba_into, has_pixel_layer, json, local_blur, local_sharpen, num, parse_brush, reject_huge_stroke, run_stroke, sponge, string, to_rgba,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -271,6 +271,7 @@ pub(super) fn dab_cmd(s: &mut Session, p: &Value, cmd: &str) -> Result<Value> {
     let (stroke, id) = parse_brush(s, p, cmd)?;
     reject_huge_stroke(cmd, &stroke)?;
     let (tool, label) = DabTool::parse(s, cmd, p, &stroke)?;
+    super::reject_huge_extent(cmd, &stroke, tool.neighborhood().halo(), super::MAX_STROKE_PIXELS)?;
     let all = matches!(tool, DabTool::Focus { .. } | DabTool::Smudge { .. }) && sample_all_layers(p);
     // The live stroke the canvas already drew for exactly this commit (`LiveDab::into_commit`):
     // take its pixels instead of running every dab again (the hitch on release).
